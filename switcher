@@ -1,0 +1,78 @@
+#!/bin/bash
+
+timestamp() {
+  date +"%T" # current time
+}
+
+log() {
+    log_file=/var/log/switcher.log
+    echo "$(timestamp) $1" >> $log_file
+}
+
+fetch_fingerterm_pid() {
+    cat /var/pid/fingerterm.pid 2>/dev/null
+}
+
+start_fingerterm() {
+    fingerterm-launcher
+}
+
+stop_fingerterm() {
+    pid=$(fetch_fingerterm_pid)
+    re='^[0-9]+$'
+    if ! [[ $pid =~ $re ]] ; then
+        log "ERROR: PID not a number, exiting"; exit 1
+    else
+        kill $pid
+    fi
+}
+
+reset_xochitl_and_start() {
+    systemctl reset-failed xochitl
+    systemctl stop xochitl
+    systemctl start xochitl
+}
+
+is_xochitl_running() {
+    systemctl is-active xochitl | grep -w "active" &> /dev/null; echo $(( $? ^ 1 ))
+}
+
+start_xochitl() {
+    systemctl start xochitl
+    retry_attempts=0
+    sleep 3
+    while [ "$(is_xochitl_running)" -eq 0 ] 
+    do
+        log "WARN: Xochitl didnt start attempting to reset and start, attempt $retry_attempts"
+        reset_xochitl_and_start
+        sleep 2
+        ((retry_attempts++))
+        if [[ $retry_attempts -eq 4 ]]; then
+            log "ERROR: Couldnt get xochitl to work after 5 attempts, giving up"
+            break
+        fi
+    done
+}
+
+stop_xochitl() {
+    systemctl stop xochitl
+}
+
+fingerterm_pid=$(fetch_fingerterm_pid)
+fingerterm_up=$(ps | grep $fingerterm_pid | grep fingerterm &> /dev/null; echo $(( $? ^ 1 )) )
+
+xochitl_up=$(is_xochitl_running)
+
+if [[ $fingerterm_up -eq 1 && $xochitl_up -eq 1 ]]; then
+    log "detected both fingerterm and xochitl up, killing xochitl"
+    stop_xochitl
+elif [[ $fingerterm_up -ne 1 && $xochitl_up -ne 1 ]]; then
+    log "detected neither fingerterm or xochitl up, starting fingerterm"
+    start_fingerterm
+elif [[ $fingerterm_up -eq 1 ]]; then
+    log "fingerterm up, switching to xochitl"
+    stop_fingerterm; start_xochitl
+else
+    log "xochitl up, switching to fingerterm"
+    stop_xochitl; start_fingerterm
+fi

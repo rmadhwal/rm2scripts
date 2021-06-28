@@ -1,0 +1,35 @@
+#!/bin/bash
+
+timestamp() {
+  date +"%T" # current time
+}
+
+log() {
+    log_file=/var/log/run.log
+    echo "$(timestamp) $1" >> $log_file
+}
+
+fetch_fingerterm_pid() {
+    cat /var/pid/fingerterm.pid 2>/dev/null
+}
+
+stop_fingerterm() {
+    pid=$(fetch_fingerterm_pid)
+    re='^[0-9]+$'
+    if ! [[ $pid =~ $re ]] ; then
+        log "ERROR: PID not a number, exiting"; exit 1
+    else
+        kill $pid
+    fi
+}
+
+function is_bin_in_path {
+  builtin type -P "$1" &> /dev/null
+}
+
+if is_bin_in_path $1; then
+    log "found $1 in path, killing fingerterm and running it"
+    stop_fingerterm; rm2fb-client $1 &
+else
+    log "$(1) not found in path"; exit 1
+fi

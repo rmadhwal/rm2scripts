@@ -1,0 +1,3 @@
+#!/bin/bash
+rm2fb-client fingerterm >> /var/log/fingerterm.log 2>/var/log/fingerterm.error.log &
+echo $! > /var/pid/fingerterm.pid
